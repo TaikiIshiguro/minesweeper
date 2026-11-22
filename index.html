@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マインスイーパー</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f8;
+      --surface: #ffffff;
+      --text: #1a1a1a;
+      --subtext: #4d4d4d;
+      --border: #949494;
+      --primary: #0017c1;
+      --primary-hover: #000082;
+      --focus: #ffd43b;
+      --cell: 32px;
+      --cell-closed: #d9e2f2;
+      --cell-open: #f4f6f8;
+      --cell-border-light: #ffffff;
+      --cell-border-dark: #75839a;
+      --danger: #d50000;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      margin: 0;
+      font-family: sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px 12px;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      align-items: end;
+      padding: 10px 14px;
+      background: var(--bg);
+    }
+
+    h1 {
+      margin: 0 auto 0 0;
+      font-size: clamp(1.25rem, 2vw, 1.7rem);
+      line-height: 1.4;
+    }
+
+    .control {
+      display: grid;
+      gap: 4px;
+    }
+
+    label {
+      color: var(--subtext);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    input[type="number"] {
+      width: 82px;
+      min-height: 38px;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+    }
+
+    button {
+      min-height: 40px;
+      padding: 8px 16px;
+      border: 1px solid var(--primary);
+      border-radius: 4px;
+      background: var(--primary);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover { background: var(--primary-hover); }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .statusbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+      align-items: center;
+      padding: 7px 12px;
+      background: var(--surface);
+      border: 1px solid #d4d4d4;
+      border-radius: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .statusbar strong { min-width: 3ch; display: inline-block; }
+    #message { margin-left: auto; font-weight: 700; }
+
+    #viewport {
+      position: relative;
+      flex: 1 1 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid #b8b8b8;
+      border-radius: 8px;
+      background: #ffffff;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #viewport.dragging { cursor: grabbing; }
+
+    #board {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: grid;
+      grid-template-columns: repeat(var(--cols), var(--cell));
+      grid-template-rows: repeat(var(--rows), var(--cell));
+      width: max-content;
+      height: max-content;
+      transform-origin: 0 0;
+      will-change: transform;
+      box-shadow: 0 4px 18px rgb(0 0 0 / 24%);
+    }
+
+    .cell {
+      width: var(--cell);
+      height: var(--cell);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      padding: 0;
+      border: 0;
+      border-top: 3px solid var(--cell-border-light);
+      border-left: 3px solid var(--cell-border-light);
+      border-right: 3px solid var(--cell-border-dark);
+      border-bottom: 3px solid var(--cell-border-dark);
+      border-radius: 0;
+      background: var(--cell-closed);
+      color: #111;
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .cell:hover:not(.open) { background: #c8d8ee; }
+    .cell:focus-visible { position: relative; z-index: 2; outline-offset: -3px; }
+
+    .cell.open {
+      border: 1px solid #aeb5bd;
+      background: var(--cell-open);
+      cursor: default;
+    }
+
+    .cell.mine { background: #ffd9d9; }
+    .cell.exploded { background: #ff8b8b; }
+    .cell.wrong-flag { background: #ffd9d9; }
+
+    .cell svg {
+      width: 72%;
+      height: 72%;
+      pointer-events: none;
+    }
+
+    .n1 { color: #0055b8; }
+    .n2 { color: #087f23; }
+    .n3 { color: #c62828; }
+    .n4 { color: #4a148c; }
+    .n5 { color: #8d2d1c; }
+    .n6 { color: #007c91; }
+    .n7 { color: #1a1a1a; }
+    .n8 { color: #666; }
+
+
+    .lives {
+      display: inline-flex;
+      gap: 3px;
+      vertical-align: middle;
+      margin-left: 3px;
+    }
+
+    .heart {
+      width: 20px;
+      height: 20px;
+      display: inline-block;
+    }
+
+    .heart svg { width: 100%; height: 100%; display: block; }
+
+    .help {
+      margin: 0;
+      flex: 0 0 auto;
+      color: var(--subtext);
+      font-size: 0.82rem;
+    }
+
+    @media (max-width: 680px) {
+      body { padding: 8px; gap: 8px; }
+      .app-header { gap: 10px; padding: 12px; }
+      h1 { flex-basis: 100%; }
+      #message { flex-basis: 100%; margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <h1>マインスイーパー</h1>
+    <div class="control">
+      <label for="rows">縦（5～60）</label>
+      <input id="rows" type="number" min="5" max="60" value="16" inputmode="numeric">
+    </div>
+    <div class="control">
+      <label for="cols">横（5～80）</label>
+      <input id="cols" type="number" min="5" max="80" value="30" inputmode="numeric">
+    </div>
+    <div class="control">
+      <label for="mineRate">地雷率（%）</label>
+      <input id="mineRate" type="number" min="5" max="35" value="16" inputmode="numeric">
+    </div>
+    <div class="control">
+      <label for="lifeInput">ライフ（1～10）</label>
+      <input id="lifeInput" type="number" min="1" max="10" value="3" inputmode="numeric">
+    </div>
+    <button id="newGame" type="button">新しいゲーム</button>
+  </header>
+
+  <section class="statusbar" aria-label="ゲーム状況">
+    <span>地雷: <strong id="mineCount">0</strong></span>
+    <span>フラグ: <strong id="flagCount">0</strong></span>
+    <span>残り: <strong id="remainingCount">0</strong></span>
+    <span class="lives-wrap" aria-label="残りライフ">ライフ: <span id="lives" class="lives"></span></span>
+    <span id="message" aria-live="polite">最初のマスを開いてください</span>
+  </section>
+
+  <main id="viewport" aria-label="マインスイーパー盤面。ホイールで拡大縮小、ドラッグで移動できます。">
+    <div id="board" role="grid" aria-label="ゲーム盤"></div>
+  </main>
+
+  <p class="help">左クリック: マスを開く／右クリック: フラグ／ホイール: 拡大・縮小／ドラッグ: 表示範囲を移動</p>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const CELL_SIZE = 32;
+      const MIN_SCALE = 0.2;
+      const MAX_SCALE = 4;
+      const SAFE_RADIUS = 1;
+
+      const flagSvg = `
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M9 27h15" fill="none" stroke="#243247" stroke-width="3" stroke-linecap="round"/>
+          <path d="M12 27V5" fill="none" stroke="#243247" stroke-width="3" stroke-linecap="round"/>
+          <path d="M13 6h13l-4 6 4 6H13z" fill="#d50000" stroke="#9b0000" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>`;
+
+      const mineSvg = `
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <g stroke="#151b23" stroke-width="2.5" stroke-linecap="round">
+            <path d="M16 3v5M16 24v5M3 16h5M24 16h5M7 7l4 4M21 21l4 4M25 7l-4 4M11 21l-4 4"/>
+          </g>
+          <circle cx="16" cy="16" r="8" fill="#222b36"/>
+          <circle cx="13.2" cy="13" r="2.2" fill="#fff" opacity=".8"/>
+        </svg>`;
+
+      const crossSvg = `
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M7 7l18 18M25 7L7 25" stroke="#d50000" stroke-width="4" stroke-linecap="round"/>
+        </svg>`;
+
+      const els = {
+        rows: document.getElementById('rows'),
+        cols: document.getElementById('cols'),
+        mineRate: document.getElementById('mineRate'),
+        lifeInput: document.getElementById('lifeInput'),
+        newGame: document.getElementById('newGame'),
+        mineCount: document.getElementById('mineCount'),
+        flagCount: document.getElementById('flagCount'),
+        remainingCount: document.getElementById('remainingCount'),
+        lives: document.getElementById('lives'),
+        message: document.getElementById('message'),
+        viewport: document.getElementById('viewport'),
+        board: document.getElementById('board')
+      };
+
+      let rows = 16;
+      let cols = 30;
+      let mineTotal = 0;
+      let cells = [];
+      let firstMove = true;
+      let gameOver = false;
+      let openedCount = 0;
+      let flagCount = 0;
+      let maxLives = 3;
+      let lives = 3;
+      let scale = 1;
+      let translateX = 0;
+      let translateY = 0;
+      let drag = null;
+      let suppressClickUntil = 0;
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function safeInteger(input, min, max, fallback) {
+        const n = Number.parseInt(input.value, 10);
+        const value = Number.isFinite(n) ? clamp(n, min, max) : fallback;
+        input.value = value;
+        return value;
+      }
+
+      function createGame() {
+        rows = safeInteger(els.rows, 5, 60, 16);
+        cols = safeInteger(els.cols, 5, 80, 30);
+        const mineRate = safeInteger(els.mineRate, 5, 35, 16);
+        maxLives = safeInteger(els.lifeInput, 1, 10, 3);
+        lives = maxLives;
+        mineTotal = Math.max(1, Math.floor(rows * cols * mineRate / 100));
+
+        // 初手周辺の最大9マスを必ず安全にできる数まで地雷数を制限する。
+        mineTotal = Math.min(mineTotal, rows * cols - 9);
+        cells = [];
+        firstMove = true;
+        gameOver = false;
+        openedCount = 0;
+        flagCount = 0;
+
+        els.board.replaceChildren();
+        els.board.style.setProperty('--rows', rows);
+        els.board.style.setProperty('--cols', cols);
+        els.board.setAttribute('aria-rowcount', rows);
+        els.board.setAttribute('aria-colcount', cols);
+
+        const fragment = document.createDocumentFragment();
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'cell';
+            button.dataset.index = String(r * cols + c);
+            button.setAttribute('role', 'gridcell');
+            button.setAttribute('aria-label', `${r + 1}行${c + 1}列、閉じています`);
+            fragment.appendChild(button);
+            cells.push({ r, c, mine: false, open: false, flagged: false, adjacent: 0, el: button });
+          }
+        }
+        els.board.appendChild(fragment);
+        updateStatus('最初のマスを開いてください');
+        requestAnimationFrame(fitBoard);
+      }
+
+      function placeMines(firstIndex) {
+        const first = cells[firstIndex];
+        const candidates = cells
+          .map((cell, index) => ({ cell, index }))
+          .filter(({ cell }) => Math.abs(cell.r - first.r) > SAFE_RADIUS || Math.abs(cell.c - first.c) > SAFE_RADIUS);
+
+        // Fisher-Yatesシャッフルで地雷位置を無作為化する。
+        for (let i = candidates.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+        }
+        candidates.slice(0, mineTotal).forEach(({ index }) => { cells[index].mine = true; });
+
+        cells.forEach(cell => {
+          if (!cell.mine) cell.adjacent = neighbors(cell.r, cell.c).filter(i => cells[i].mine).length;
+        });
+      }
+
+      function neighbors(r, c) {
+        const result = [];
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const nr = r + dr;
+            const nc = c + dc;
+            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) result.push(nr * cols + nc);
+          }
+        }
+        return result;
+      }
+
+      function openCell(index) {
+        if (gameOver || performance.now() < suppressClickUntil) return;
+        const cell = cells[index];
+        if (!cell || cell.open || cell.flagged) return;
+
+        if (firstMove) {
+          placeMines(index);
+          firstMove = false;
+          updateStatus('ゲーム中');
+        }
+
+        if (cell.mine) {
+          cell.open = true;
+          renderCell(cell, true);
+          lives--;
+          if (lives <= 0) {
+            finish(false);
+          } else {
+            updateStatus(`地雷！ 残りライフ ${lives}`);
+          }
+          return;
+        }
+
+        // 空白マスはキューを使い、隣接領域を一括して開く。
+        const queue = [index];
+        const queued = new Set(queue);
+        while (queue.length) {
+          const currentIndex = queue.shift();
+          const current = cells[currentIndex];
+          if (current.open || current.flagged || current.mine) continue;
+          current.open = true;
+          openedCount++;
+          renderCell(current);
+          if (current.adjacent === 0) {
+            neighbors(current.r, current.c).forEach(nextIndex => {
+              if (!queued.has(nextIndex) && !cells[nextIndex].mine) {
+                queued.add(nextIndex);
+                queue.push(nextIndex);
+              }
+            });
+          }
+        }
+
+        if (openedCount === rows * cols - mineTotal) finish(true);
+      }
+
+      function toggleFlag(index) {
+        if (gameOver || performance.now() < suppressClickUntil) return;
+        const cell = cells[index];
+        if (!cell || cell.open) return;
+        cell.flagged = !cell.flagged;
+        flagCount += cell.flagged ? 1 : -1;
+        renderCell(cell);
+        updateStatus('ゲーム中');
+      }
+
+      function renderCell(cell, exploded = false) {
+        const el = cell.el;
+        el.className = 'cell';
+        el.replaceChildren();
+
+        if (cell.open) {
+          el.classList.add('open');
+          if (cell.mine) {
+            el.classList.add('mine');
+            if (exploded) el.classList.add('exploded');
+            el.innerHTML = mineSvg;
+            el.setAttribute('aria-label', `${cell.r + 1}行${cell.c + 1}列、地雷`);
+          } else if (cell.adjacent > 0) {
+            el.textContent = String(cell.adjacent);
+            el.classList.add(`n${cell.adjacent}`);
+            el.setAttribute('aria-label', `${cell.r + 1}行${cell.c + 1}列、周囲の地雷${cell.adjacent}個`);
+          } else {
+            el.setAttribute('aria-label', `${cell.r + 1}行${cell.c + 1}列、空白`);
+          }
+        } else if (cell.flagged) {
+          el.innerHTML = flagSvg;
+          el.setAttribute('aria-label', `${cell.r + 1}行${cell.c + 1}列、フラグあり`);
+        } else {
+          el.setAttribute('aria-label', `${cell.r + 1}行${cell.c + 1}列、閉じています`);
+        }
+      }
+
+      function finish(won) {
+        gameOver = true;
+        cells.forEach(cell => {
+          if (cell.mine && !cell.flagged) {
+            cell.open = true;
+            renderCell(cell);
+          } else if (!cell.mine && cell.flagged) {
+            cell.el.classList.add('wrong-flag');
+            cell.el.innerHTML = crossSvg;
+            cell.el.setAttribute('aria-label', `${cell.r + 1}行${cell.c + 1}列、誤ったフラグ`);
+          }
+        });
+        updateStatus(won ? 'クリア！' : 'ゲームオーバー');
+      }
+
+      function renderLives() {
+        els.lives.replaceChildren();
+        for (let i = 0; i < maxLives; i++) {
+          const span = document.createElement('span');
+          span.className = 'heart';
+          span.setAttribute('aria-hidden', 'true');
+          const active = i < lives;
+          span.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 21s-7.2-4.5-9.5-9C.6 8.4 2.6 4.5 6.5 4.1c2.2-.2 4.1.9 5.5 2.7 1.4-1.8 3.3-2.9 5.5-2.7 3.9.4 5.9 4.3 4 7.9C19.2 16.5 12 21 12 21z" fill="${active ? '#d50000' : '#a8a8a8'}" stroke="${active ? '#a40000' : '#777777'}" stroke-width="1"/></svg>`;
+          els.lives.appendChild(span);
+        }
+        els.lives.parentElement.setAttribute('aria-label', `残りライフ ${lives} / ${maxLives}`);
+      }
+
+      function updateStatus(message) {
+        els.mineCount.textContent = String(mineTotal);
+        els.flagCount.textContent = String(flagCount);
+        els.remainingCount.textContent = String(Math.max(0, mineTotal - flagCount));
+        renderLives();
+        if (message) els.message.textContent = message;
+      }
+
+      function applyTransform() {
+        els.board.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+      }
+
+      function fitBoard() {
+        const viewportRect = els.viewport.getBoundingClientRect();
+        const boardWidth = cols * CELL_SIZE;
+        const boardHeight = rows * CELL_SIZE;
+        const padding = 20;
+        const fitX = Math.max(1, viewportRect.width - padding * 2) / boardWidth;
+        const fitY = Math.max(1, viewportRect.height - padding * 2) / boardHeight;
+        scale = clamp(Math.min(fitX, fitY, 1), MIN_SCALE, MAX_SCALE);
+        translateX = (viewportRect.width - boardWidth * scale) / 2;
+        translateY = (viewportRect.height - boardHeight * scale) / 2;
+        applyTransform();
+      }
+
+      els.board.addEventListener('click', event => {
+        const cell = event.target.closest('.cell');
+        if (cell) openCell(Number(cell.dataset.index));
+      });
+
+      els.board.addEventListener('contextmenu', event => {
+        const cell = event.target.closest('.cell');
+        if (!cell) return;
+        event.preventDefault();
+        toggleFlag(Number(cell.dataset.index));
+      });
+
+      els.viewport.addEventListener('wheel', event => {
+        event.preventDefault();
+        const rect = els.viewport.getBoundingClientRect();
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+        const oldScale = scale;
+        const factor = Math.exp(-event.deltaY * 0.0015);
+        scale = clamp(scale * factor, MIN_SCALE, MAX_SCALE);
+
+        // ポインター位置の盤面座標を維持したまま拡大縮小する。
+        const boardX = (pointerX - translateX) / oldScale;
+        const boardY = (pointerY - translateY) / oldScale;
+        translateX = pointerX - boardX * scale;
+        translateY = pointerY - boardY * scale;
+        applyTransform();
+      }, { passive: false });
+
+      els.viewport.addEventListener('pointerdown', event => {
+        if (event.button !== 0) return;
+        drag = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          originX: translateX,
+          originY: translateY,
+          moved: false
+        };
+        // Pointer capture is deliberately not used here. Keeping the original
+        // cell as the click target allows an ordinary left click to open it.
+        els.viewport.classList.add('dragging');
+      });
+
+      els.viewport.addEventListener('pointermove', event => {
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        const dx = event.clientX - drag.startX;
+        const dy = event.clientY - drag.startY;
+        if (Math.hypot(dx, dy) > 5) drag.moved = true;
+        if (drag.moved) {
+          translateX = drag.originX + dx;
+          translateY = drag.originY + dy;
+          applyTransform();
+        }
+      });
+
+      function endDrag(event) {
+        if (!drag || event.pointerId !== drag.pointerId) return;
+        if (drag.moved) suppressClickUntil = performance.now() + 100;
+        drag = null;
+        els.viewport.classList.remove('dragging');
+      }
+
+      els.viewport.addEventListener('pointerup', endDrag);
+      els.viewport.addEventListener('pointercancel', endDrag);
+      els.newGame.addEventListener('click', createGame);
+      window.addEventListener('resize', () => { if (!drag) fitBoard(); });
+
+      createGame();
+    })();
+  </script>
+</body>
+</html>
